@@ -1,0 +1,6 @@
+aiohttp
+websockets
+mss>=10.2
+pyautogui
+pyperclip
+pillow

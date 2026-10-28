@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="lo">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e1013">
+<title>Remote Screen</title>
+<style>
+  :root {
+    --bg:#f3f4f7; --card:#fff; --fg:#14171c; --muted:#5d6572; --line:#dde0e6;
+    --acc:#2563eb; --acc-fg:#fff; --bad:#c62828; --shadow:0 10px 30px rgba(20,23,28,.10);
+    --font:system-ui,-apple-system,"Segoe UI","Leelawadee UI","Noto Sans Lao",sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0e1013; --card:#181b20; --fg:#eceef2; --muted:#98a1ae; --line:#2a2f37; --acc:#6ea0ff; --acc-fg:#0b1020; --bad:#ff8a80; --shadow:0 10px 30px rgba(0,0,0,.45); }
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--fg); font:16px/1.5 var(--font); overflow:hidden; }
+  [hidden] { display:none !important; }
+  :focus-visible { outline:3px solid var(--acc); outline-offset:2px; }
+
+  .screen { height:100dvh; display:grid; place-items:center; padding:16px; overflow:auto; }
+  .card { width:min(400px,100%); background:var(--card); border:1px solid var(--line); border-radius:20px; padding:28px 24px; box-shadow:var(--shadow); display:grid; gap:16px; }
+  h1 { margin:0; font-size:1.4rem; letter-spacing:-.01em; }
+  .sub { margin:0; color:var(--muted); font-size:.95rem; }
+  label.f { display:grid; gap:6px; font-size:.9rem; color:var(--muted); }
+  input[type=password], input[type=text] { font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:13px 14px; min-height:48px; width:100%; }
+  .check { display:flex; align-items:center; gap:10px; min-height:44px; color:var(--fg); font-size:.95rem; }
+  .check input { width:20px; height:20px; accent-color:var(--acc); }
+  .btn { font:inherit; font-weight:600; min-height:48px; padding:0 18px; border-radius:12px; border:1px solid transparent; background:var(--acc); color:var(--acc-fg); cursor:pointer; transition:transform .12s, opacity .12s; }
+  .btn:active { transform:scale(.97); }
+  .btn.ghost { background:transparent; color:var(--fg); border-color:var(--line); }
+  .err { color:var(--bad); min-height:1.4em; margin:0; font-size:.9rem; }
+  #list { display:grid; gap:10px; }
+  .pc { display:flex; align-items:center; gap:12px; text-align:left; width:100%; min-height:56px; padding:0 16px; border-radius:14px; border:1px solid var(--line); background:var(--bg); color:var(--fg); font:inherit; font-weight:600; cursor:pointer; transition:transform .12s, border-color .12s; }
+  .pc:hover { border-color:var(--acc); } .pc:active { transform:scale(.98); }
+  .dot { width:10px; height:10px; border-radius:50%; background:#22c55e; flex:none; }
+
+  /* remote screen: fills the window, letterboxed, nothing drawn over it except a tiny handle */
+  #stage { position:fixed; inset:0; background:#000; }
+  #cv { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; touch-action:none; outline:none; cursor:default; }
+  #paused { position:absolute; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.6); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); color:#fff; z-index:5; }
+  .pbox { display:grid; gap:12px; justify-items:center; text-align:center; padding:24px; }
+  .pbox p { margin:0 0 4px; font-size:1.1rem; font-weight:600; }
+  .pbox .btn { min-width:180px; } .pbox .ghost { color:#fff; border-color:rgba(255,255,255,.35); }
+  #handle { position:absolute; top:max(0px,env(safe-area-inset-top)); left:50%; translate:-50% 0; width:64px; height:22px; border:0; padding:0; background:transparent; cursor:pointer; opacity:.2; transition:opacity .2s; z-index:3; }
+  #handle::after { content:""; display:block; width:36px; height:5px; margin:6px auto; border-radius:3px; background:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
+  #handle:hover, #handle:focus-visible { opacity:1; }
+  #bar, #keys, #textbar { position:absolute; left:50%; translate:-50% 0; background:rgba(18,20,24,.88); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,.14); border-radius:16px; color:#fff; box-shadow:0 12px 32px rgba(0,0,0,.45); }
+  #bar { top:calc(max(0px,env(safe-area-inset-top)) + 26px); display:flex; align-items:center; gap:2px; padding:5px; max-width:calc(100vw - 16px); transition:opacity .18s, transform .18s; }
+  #bar.off { opacity:0; transform:translateY(-8px); pointer-events:none; }
+  #bar .name { padding:0 10px 0 8px; font-size:.85rem; font-weight:600; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:.85; }
+  .ib { width:44px; height:44px; display:grid; place-items:center; border:0; border-radius:12px; background:transparent; color:#fff; cursor:pointer; transition:background .12s, transform .12s; }
+  .ib:hover { background:rgba(255,255,255,.12); } .ib:active { transform:scale(.92); }
+  .ib.on { background:var(--acc); color:var(--acc-fg); }
+  .ib.danger:hover { background:rgba(239,68,68,.35); }
+  .ib svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .sep { width:1px; height:24px; background:rgba(255,255,255,.18); margin:0 4px; }
+  #keys { top:calc(max(0px,env(safe-area-inset-top)) + 84px); display:flex; flex-wrap:wrap; gap:6px; padding:8px; max-width:calc(100vw - 16px); justify-content:center; }
+  #keys button { min-width:48px; min-height:44px; padding:0 12px; border:1px solid rgba(255,255,255,.16); border-radius:10px; background:transparent; color:#fff; font:inherit; font-size:.9rem; cursor:pointer; }
+  #keys button:hover { background:rgba(255,255,255,.12); } #keys button:active { transform:scale(.95); }
+  #textbar { top:calc(max(0px,env(safe-area-inset-top)) + 84px); display:flex; gap:8px; padding:8px; width:min(520px,calc(100vw - 16px)); }
+  #textbar input { flex:1; min-height:44px; background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); color:#fff; }
+  #textbar .btn { min-height:44px; }
+  #toast { position:absolute; bottom:max(16px,env(safe-area-inset-bottom)); left:50%; translate:-50% 0; background:rgba(18,20,24,.9); color:#fff; padding:10px 16px; border-radius:12px; font-size:.9rem; max-width:calc(100vw - 32px); }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+
+<main id="login" class="screen" hidden>
+  <form id="lf" class="card">
+    <div><h1>Remote Screen</h1><p class="sub">ເຂົ້າສູ່ລະບົບເພື່ອຄວບຄຸມຄອມຂອງເຈົ້າ</p></div>
+    <label class="f">ຊື່ຜູ້ໃຊ້
+      <input id="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+    </label>
+    <label class="f">ລະຫັດຜ່ານ
+      <input id="pw" type="password" autocomplete="current-password" required>
+    </label>
+    <label class="check"><input id="rem" type="checkbox" checked> ຈື່ການເຂົ້າສູ່ລະບົບ (30 ວັນ)</label>
+    <button class="btn">ເຂົ້າສູ່ລະບົບ</button>
+    <p id="lerr" class="err" role="alert"></p>
+  </form>
+</main>
+
+<main id="picker" class="screen" hidden>
+  <div class="card">
+    <div><h1>ເລືອກຄອມ</h1><p class="sub" id="psub">ກຳລັງຊອກຫາ…</p></div>
+    <div id="list"></div>
+    <button id="logout" class="btn ghost">ອອກຈາກລະບົບ</button>
+  </div>
+</main>
+
+<section id="stage" hidden>
+  <canvas id="cv" tabindex="0" aria-label="ໜ້າຈໍຂອງຄອມທີ່ຄວບຄຸມ"></canvas>
+  <button id="handle" aria-label="ເປີດເມນູ"></button>
+  <div id="bar" class="off" role="toolbar" aria-label="ເຄື່ອງມື">
+    <span class="name" id="pcname"></span>
+    <button class="ib" id="bPause" aria-label="ພັກໜ້າຈໍ" title="ພັກໜ້າຈໍ (ຢຸດສົ່ງພາບ)"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+    <button class="ib" id="bFs" aria-label="ເຕັມຈໍ" title="ເຕັມຈໍ (F11)"><svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button>
+    <button class="ib" id="bFit" aria-label="ປັບຂະໜາດພາບ" title="ເຕັມປ່ອງ / ຮັກສາອັດຕາສ່ວນ"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 12H5m0 0l2-2m-2 2l2 2M15 12h4m0 0l-2-2m2 2l-2 2"/></svg></button>
+    <span class="sep"></span>
+    <button class="ib" id="bKb" aria-label="ພິມຂໍ້ຄວາມ" title="ພິມຂໍ້ຄວາມ"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
+    <button class="ib" id="bKeys" aria-label="ປຸ່ມພິເສດ" title="ປຸ່ມພິເສດ"><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>
+    <button class="ib" id="bRc" aria-label="ຄລິກຂວາ (ແຕະຄັ້ງຕໍ່ໄປ)" title="ຄລິກຂວາ"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6z"/><path d="M17 17l4 4"/></svg></button>
+    <button class="ib" id="bUp" aria-label="ເລື່ອນຂຶ້ນ" title="ເລື່ອນຂຶ້ນ"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    <button class="ib" id="bDn" aria-label="ເລື່ອນລົງ" title="ເລື່ອນລົງ"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+    <span class="sep"></span>
+    <button class="ib danger" id="bOut" aria-label="ອອກຈາກຈໍນີ້" title="ອອກຈາກຈໍນີ້"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div id="keys" hidden></div>
+  <form id="textbar" hidden><input id="txt" type="text" autocomplete="off" aria-label="ຂໍ້ຄວາມທີ່ຈະພິມ" placeholder="ພິມຂໍ້ຄວາມ (ພາສາໃດກໍໄດ້)"><button class="btn">ສົ່ງ</button></form>
+  <div id="paused" hidden>
+    <div class="pbox"><p>ພັກໜ້າຈໍຢູ່ (ຢຸດສົ່ງພາບແລ້ວ)</p>
+      <button class="btn" id="bResume">ສືບຕໍ່</button>
+      <button class="btn ghost" id="bLeave">ອອກ</button></div>
+  </div>
+  <div id="toast" role="status" hidden></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const cv = $('cv'), ctx = cv.getContext('2d');
+let ws = null, current = null, manual = false, skipAuto = false, retry = 0, pollT = 0;
+
+/* ---------- screens ---------- */
+const show = name => { for (const s of ['login', 'picker', 'stage']) $(s).hidden = s !== name; };
+const api = (path, body) => fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+let toastT = 0;
+const toast = (msg, ms = 2600) => { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); if (ms) toastT = setTimeout(() => t.hidden = true, ms); };
+
+function showLogin() { clearTimeout(pollT); show('login'); $('user').value = store.get('rs_user') || ''; ($('user').value ? $('pw') : $('user')).focus(); }
+$('lf').onsubmit = async e => {
+  e.preventDefault(); $('lerr').textContent = '';
+  const r = await api('/api/login', { username: $('user').value.trim(), password: $('pw').value, remember: $('rem').checked });
+  $('pw').value = '';
+  if (r.ok) { store.set('rs_user', $('user').value.trim()); return showPicker(); }
+  $('lerr').textContent = r.status === 429 ? 'ລອງຜິດຫຼາຍເກີນໄປ ລໍຖ້າ 5 ນາທີ' : 'ຊື່ຜູ້ໃຊ້ ຫຼືລະຫັດບໍ່ຖືກຕ້ອງ';
+};
+$('logout').onclick = async () => { await api('/api/logout', {}); showLogin(); };
+
+async function showPicker() {
+  clearTimeout(pollT); show('picker');
+  const r = await api('/api/computers');
+  if (r.status === 401) return showLogin();
+  const list = await r.json(), box = $('list'); box.replaceChildren();
+  const last = store.get('rs_last');
+  if (!skipAuto && last && list.includes(last) && !(ws && ws.readyState <= 1)) return connect(last);
+  $('psub').textContent = list.length ? 'ແຕະເພື່ອເຊື່ອມຕໍ່' : 'ບໍ່ມີຄອມທີ່ອອນລາຍ. ກວດວ່າ agent ເປີດຢູ່ໃນຄອມນັ້ນ';
+  for (const id of list) {
+    const b = document.createElement('button'); b.className = 'pc';
+    const d = document.createElement('span'); d.className = 'dot';
+    b.append(d, id); b.onclick = () => { skipAuto = false; if (wantFs() && !document.fullscreenElement) enterFs(); connect(id); };
+    box.append(b);
+  }
+  pollT = setTimeout(showPicker, 4000);
+}
+
+/* ---------- connection and drawing ---------- */
+// each binary message = 8-byte header (x, y, w, h as little-endian uint16) + a JPEG of that rectangle; applied strictly in order
+const frames = []; let busy = false;
+async function paint() {
+  if (busy) return; busy = true;
+  while (frames.length) {
+    const buf = frames.shift(), dv = new DataView(buf);
+    const bmp = await createImageBitmap(new Blob([buf.slice(8)], { type: 'image/jpeg' }));
+    ctx.drawImage(bmp, dv.getUint16(0, true), dv.getUint16(2, true)); bmp.close();
+  }
+  busy = false;
+}
+
+function connect(id) {
+  clearTimeout(pollT); current = id; manual = false; $('pcname').textContent = id;
+  if (ws) { const old = ws; ws = null; old.onmessage = old.onclose = null; try { old.close(); } catch {} }   // never keep two streams running
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/view');
+  ws.binaryType = 'arraybuffer'; frames.length = 0;
+  const mine = ws; let gotFrame = false;
+  mine.onopen = () => mine.send(JSON.stringify({ id }));
+  mine.onmessage = ev => {
+    if (mine !== ws) return;
+    if (typeof ev.data !== 'string') {
+      frames.push(ev.data); paint(); retry = 0;
+      if (!gotFrame) {
+        gotFrame = true; store.set('rs_last', id); show('stage'); $('paused').hidden = true; $('toast').hidden = true; cv.focus();
+        if (!store.get('rs_hint')) { store.set('rs_hint', '1'); toast('ກົດຂີດນ້ອຍໆ ກາງເທິງ ເພື່ອເປີດເມນູ', 4000); }
+      }
+      return;
+    }
+    const m = JSON.parse(ev.data);
+    if (m.type === 'screen' && (cv.width !== m.w || cv.height !== m.h)) { cv.width = m.w; cv.height = m.h; }   // resizing clears the canvas, so only when it really changed
+    if (m.type === 'error') mine.err = m.msg;
+  };
+  mine.onclose = () => {
+    if (mine !== ws) return;
+    releaseAll();
+    if (mine.err === 'login required') return showLogin();
+    if (manual) return;
+    if (mine.err || retry > 30) { skipAuto = true; showPicker(); return; }
+    show('stage'); toast('ຂາດການເຊື່ອມຕໍ່ ກຳລັງເຊື່ອມໃໝ່…', 0); retry++;
+    setTimeout(() => { if (!manual && mine === ws) connect(id); }, 2000);
+  };
+}
+const send = o => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
+function leave() { manual = true; skipAuto = true; paused = false; $('paused').hidden = true; if (ws) ws.close(); exitFs(true); showPicker(); }
+
+/* pause = really stop the stream (the agent goes idle) and freeze the last picture */
+let paused = false;
+function pause() { paused = true; manual = true; releaseAll(); hideBar(true); if (ws) ws.close(); $('paused').hidden = false; }
+function resume() { paused = false; $('paused').hidden = true; toast('ກຳລັງເຊື່ອມຕໍ່…', 0); connect(current); }
+$('bPause').onclick = pause; $('bResume').onclick = resume; $('bLeave').onclick = leave;
+
+/* fill = stretch to the whole window (no black bars); fit = keep the shape of the remote screen */
+let fill = store.get('rs_fill') !== '0';
+const applyFit = () => { cv.style.objectFit = fill ? 'fill' : 'contain'; $('bFit').classList.toggle('on', fill); };
+$('bFit').onclick = () => { fill = !fill; store.set('rs_fill', fill ? '1' : '0'); applyFit(); toast(fill ? 'ເຕັມປ່ອງ (ບໍ່ມີຂອບດຳ)' : 'ຮັກສາອັດຕາສ່ວນ'); };
+applyFit();
+
+/* ---------- toolbar (hidden unless asked for) ---------- */
+let barT = 0;
+const bar = $('bar');
+function flashBar(ms = 5000) { bar.classList.remove('off'); clearTimeout(barT); barT = setTimeout(hideBar, ms); }
+function hideBar(force) {
+  if (!force && (bar.matches(':hover') || bar.contains(document.activeElement) && document.activeElement !== cv)) return flashBar(1500);
+  if (!force && !$('textbar').hidden) return;
+  bar.classList.add('off'); $('keys').hidden = true; $('textbar').hidden = true;
+}
+$('handle').onclick = () => bar.classList.contains('off') ? flashBar() : hideBar(true);   // hidden until you click it
+bar.addEventListener('click', () => { if ($('textbar').hidden) cv.focus(); });   // keep typing going to the remote screen
+bar.onpointerenter = () => clearTimeout(barT);
+bar.onpointerleave = () => flashBar(1500);
+
+const KEYS = [['Esc', 'Escape'], ['Tab', 'Tab'], ['Enter', 'Enter'], ['⌫', 'Backspace'], ['Del', 'Delete'], ['Win', 'Meta'], ['Home', 'Home'], ['End', 'End'], ['PgUp', 'PageUp'], ['PgDn', 'PageDown'], ['←', 'ArrowLeft'], ['↑', 'ArrowUp'], ['↓', 'ArrowDown'], ['→', 'ArrowRight']];
+const COMBOS = [['Alt+Tab', ['Alt', 'Tab']], ['Ctrl+C', ['Control', 'c']], ['Ctrl+V', ['Control', 'v']], ['Ctrl+A', ['Control', 'a']], ['Ctrl+Z', ['Control', 'z']]];
+const tap = k => { send({ t: 'key', k, d: true }); send({ t: 'key', k, d: false }); };
+for (const [label, k] of KEYS) { const b = document.createElement('button'); b.textContent = label; b.onclick = () => tap(k); $('keys').append(b); }
+for (const [label, ks] of COMBOS) { const b = document.createElement('button'); b.textContent = label; b.onclick = () => { ks.forEach(k => send({ t: 'key', k, d: true })); [...ks].reverse().forEach(k => send({ t: 'key', k, d: false })); }; $('keys').append(b); }
+
+$('bKeys').onclick = () => { $('textbar').hidden = true; $('keys').hidden = !$('keys').hidden; flashBar(8000); };
+$('bKb').onclick = () => { $('keys').hidden = true; $('textbar').hidden = !$('textbar').hidden; if (!$('textbar').hidden) $('txt').focus(); else { hideBar(); cv.focus(); } };
+$('textbar').onsubmit = e => { e.preventDefault(); if ($('txt').value) { send({ t: 'text', s: $('txt').value }); $('txt').value = ''; } };
+$('txt').onkeydown = e => { e.stopPropagation(); if (e.key === 'Escape') { $('textbar').hidden = true; cv.focus(); } };
+let rightNext = false;
+$('bRc').onclick = () => { rightNext = !rightNext; $('bRc').classList.toggle('on', rightNext); if (rightNext) { hideBar(); toast('ແຕະບ່ອນທີ່ຈະຄລິກຂວາ'); } };
+$('bUp').onclick = () => send({ t: 'wheel', dy: -3 });
+$('bDn').onclick = () => send({ t: 'wheel', dy: 3 });
+$('bOut').onclick = leave;
+
+/* ---------- fullscreen ---------- */
+const canFs = !!document.documentElement.requestFullscreen;
+if (!canFs) $('bFs').hidden = true;
+const wantFs = () => canFs && store.get('rs_fs') !== '0';   // fullscreen is the default until you leave it on purpose
+async function enterFs() { try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); if (navigator.keyboard?.lock) navigator.keyboard.lock(); } catch {} }
+function exitFs(silent) { try { navigator.keyboard?.unlock?.(); if (document.fullscreenElement) { leavingOnPurpose = !!silent; document.exitFullscreen(); } } catch {} }
+let leavingOnPurpose = false;
+$('bFs').onclick = () => { document.fullscreenElement ? exitFs() : enterFs(); hideBar(true); };
+document.addEventListener('fullscreenchange', () => {
+  const on = !!document.fullscreenElement;
+  $('bFs').classList.toggle('on', on);
+  if (on) store.set('rs_fs', '1'); else if (!leavingOnPurpose && !$('stage').hidden) store.set('rs_fs', '0');
+  leavingOnPurpose = false;
+});
+// browsers only allow fullscreen after a click/tap, so the first touch of the screen (or the pick in the list) goes fullscreen
+cv.addEventListener('pointerdown', () => { if (wantFs() && !document.fullscreenElement) enterFs(); }, { once: true });
+
+/* ---------- mouse, touch, keyboard ---------- */
+function pos(x, y) {   // map a window point to 0..1 of the remote screen (stretched, or letterboxed in "fit" mode)
+  const r = cv.getBoundingClientRect(), s = fill ? 0 : Math.min(r.width / cv.width, r.height / cv.height);
+  const w = fill ? r.width : cv.width * s, h = fill ? r.height : cv.height * s;
+  const c = v => Math.min(1, Math.max(0, v));
+  return { x: c((x - r.left - (r.width - w) / 2) / w), y: c((y - r.top - (r.height - h) / 2) / h) };
+}
+let moveP = null, moveQueued = false;
+const queueMove = e => { moveP = pos(e.clientX, e.clientY); if (moveQueued) return; moveQueued = true; requestAnimationFrame(() => { moveQueued = false; send({ t: 'move', x: moveP.x, y: moveP.y }); }); };
+const click = (p, b) => { send({ t: 'down', b, ...p }); send({ t: 'up', b, ...p }); };
+const ptrs = new Map(); let g = null, mouseBtn = 'left';
+const avgY = () => [...ptrs.values()].reduce((s, p) => s + p.y, 0) / ptrs.size;
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); cv.focus(); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (e.pointerType !== 'touch') {
+    mouseBtn = rightNext || e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left';
+    rightNext = false; $('bRc').classList.remove('on');
+    return send({ t: 'down', b: mouseBtn, ...pos(e.clientX, e.clientY) });
+  }
+  if (ptrs.size === 1) {
+    g = { x: e.clientX, y: e.clientY, moved: false, drag: false, long: false, scroll: false };
+    g.timer = setTimeout(() => { if (!g.moved && !g.scroll) { g.long = true; navigator.vibrate?.(15); click(pos(g.x, g.y), 'right'); } }, 450);
+  } else if (g) { clearTimeout(g.timer); g.scroll = true; g.sy = avgY(); }
+});
+cv.addEventListener('pointermove', e => {
+  if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (e.pointerType !== 'touch') return queueMove(e);
+  if (!g) return;
+  if (g.scroll) { const d = avgY() - g.sy; if (Math.abs(d) > 20) { send({ t: 'wheel', dy: d < 0 ? 2 : -2 }); g.sy = avgY(); } return; }
+  if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) > 8) { g.moved = true; clearTimeout(g.timer); if (!g.long) { g.drag = true; send({ t: 'down', b: 'left', ...pos(g.x, g.y) }); } }
+  if (g.drag) queueMove(e);
+});
+const end = e => {
+  ptrs.delete(e.pointerId);
+  if (e.pointerType !== 'touch') return send({ t: 'up', b: mouseBtn, ...pos(e.clientX, e.clientY) });
+  if (!g) return; clearTimeout(g.timer);
+  if (g.drag) send({ t: 'up', b: 'left', ...pos(e.clientX, e.clientY) });
+  else if (!g.moved && !g.long && !g.scroll) { click(pos(g.x, g.y), rightNext ? 'right' : 'left'); rightNext = false; $('bRc').classList.remove('on'); }
+  if (!ptrs.size) g = null;
+};
+cv.addEventListener('pointerup', end);
+cv.addEventListener('pointercancel', end);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => { e.preventDefault(); send({ t: 'wheel', dy: Math.sign(e.deltaY) * Math.min(5, Math.ceil(Math.abs(e.deltaY) / 100)) }); }, { passive: false });
+
+const heldKeys = new Set();
+function releaseAll() { for (const k of heldKeys) send({ t: 'key', k, d: false }); heldKeys.clear(); }
+function onKey(e, d) {
+  if ($('stage').hidden || paused || e.target.tagName === 'INPUT') return;
+  if (e.key === 'F11') return;   // let the browser toggle fullscreen
+  const wide = e.key.length === 1 && e.key.charCodeAt(0) > 127;
+  if (wide) { if (d && !e.ctrlKey && !e.altKey && !e.metaKey) send({ t: 'text', s: e.key }); }
+  else { send({ t: 'key', k: e.key, d }); d ? heldKeys.add(e.key) : heldKeys.delete(e.key); }
+  e.preventDefault();
+}
+document.addEventListener('keydown', e => onKey(e, true));
+document.addEventListener('keyup', e => onKey(e, false));
+window.addEventListener('blur', releaseAll);
+
+/* ---------- start ---------- */
+(async () => { try { const r = await (await api('/api/session')).json(); r.ok ? showPicker() : showLogin(); } catch { showLogin(); } })();
+</script>
+</body>
+</html>
