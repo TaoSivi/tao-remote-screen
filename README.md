@@ -44,7 +44,7 @@ python agent.py --server wss://<your-address> --id office-pc
 **Viewer:** open `https://<your-address>/`, sign in, pick the computer.
 
 ## .exe route (Windows, unsigned)
-Releases contain `RemoteScreenServer.exe` and `RemoteScreenAgent.exe` (built with PyInstaller from this source) and `SHA256SUMS.txt`. Check the hashes before running. They ask for the same settings on first start. `install-server.ps1` can register the server to start at logon.
+The [`downloads/`](downloads) folder holds `RemoteScreenServer.exe` and `RemoteScreenAgent.exe` (built with PyInstaller from this source) and `SHA256SUMS.txt`. Download a file with the "Download raw file" button, then check its hash (`Get-FileHash file.exe`) against `SHA256SUMS.txt` before running. They ask for the same settings on first start. `install-server.ps1` can register the server to start at logon.
 
 ## Security notes
 - Anyone with the viewer user name and password controls every registered computer. Use a long password; keep the server private (Tailscale) or behind HTTPS.
